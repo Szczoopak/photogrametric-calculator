@@ -1,132 +1,110 @@
-import os
+import argparse
 import json
 import numpy as np
 import cv2
+import csv
 
 # =============================================================================
-# 1. ŚCIEŻKI DO PLIKÓW (Uzupełnij własnymi ścieżkami)
+# 1. PARSER LINII KOMEND (Wymaganie instrukcji)
 # =============================================================================
-path_img1 = r"C:\VSC\Fotka\photogrametric-calculator\data\DJI_20250217091019_0200_V.jpg"
-path_img2 = r"C:\VSC\Fotka\photogrametric-calculator\data\DJI_20250217091553_0592_V.jpg" # Przykładowe drugie zdjęcie
-
-path_ori1 = r"C:\VSC\Fotka\photogrametric-calculator\data\DJI_20250217091019_0200_V_orientation.json"
-path_ori2 = r"C:\VSC\Fotka\photogrametric-calculator\data\DJI_20250217091553_0592_V_orientation.json" # Dane kamery dla 2. zdjęcia
-
-path_gcp1 = r"C:\VSC\Fotka\photogrametric-calculator\data\DJI_20250217091019_0200_V_gcps.json"
-path_gcp2 = r"C:\VSC\Fotka\photogrametric-calculator\data\DJI_20250217091553_0592_V_gcps.json" # Punkty na 2. zdjęciu
+parser = argparse.ArgumentParser(description="Wcięcie w przód - Projekt 1 (Ocena 4)")
+parser.add_argument('--ori1', required=True, help="Ścieżka do pliku JSON z orientacją 1. zdjęcia")
+parser.add_argument('--ori2', required=True, help="Ścieżka do pliku JSON z orientacją 2. zdjęcia")
+parser.add_argument('--uv', required=True, help="Ścieżka do pliku JSON ze współrzędnymi pikselowymi (np. tie_points.json)")
+parser.add_argument('--out', required=True, help="Ścieżka do wynikowego pliku CSV")
+args = parser.parse_args()
 
 # =============================================================================
-# 2. FUNKCJA POMOCNICZA: BUDOWANIE MACIERZY K
+# 2. FUNKCJA BUDUJĄCA MACIERZ RZUTOWANIA P (P = K * [R | t])
 # =============================================================================
-def load_intrinsic_matrix(path_json):
+def get_projection_matrix(path_json):
+    """Zwraca macierz rzutowania P w globalnym układzie współrzędnych (float64)."""
     with open(path_json, 'r') as f:
         data = json.load(f)
-    f_pixels = data['intrinsic']['focal_in_pixels']
-    w = data['intrinsic']['width']
-    h = data['intrinsic']['height']
-    offset_x = data['intrinsic']['principal_point_offset'][0]
-    offset_y = data['intrinsic']['principal_point_offset'][1]
-
-    cx = (w / 2.0) + offset_x
-    cy = (h / 2.0) + offset_y
-    fx = fy = f_pixels
-
+    
+    # 1. Macierz kalibracyjna K (Wewnętrzna)
+    intr = data.get('intrinsic', data)
+    f_pixels = intr['focal_in_pixels']
+    cx = (intr['width'] / 2.0) + intr['principal_point_offset'][0]
+    cy = (intr['height'] / 2.0) + intr['principal_point_offset'][1]
+    
     K = np.array([
-        [fx,   0.0,   cx],
-        [0.0,   fy,   cy],
-        [0.0,  0.0,  1.0]
-    ], dtype=np.float32)
-    return K
+        [f_pixels, 0.0, cx],
+        [0.0, f_pixels, cy],
+        [0.0, 0.0, 1.0]
+    ], dtype=np.float64)
 
-# Wczytanie macierzy dla obu stanowisk [cite: 75, 76]
-K1 = load_intrinsic_matrix(path_ori1)
-K2 = load_intrinsic_matrix(path_ori2)
-dist_coeffs = np.zeros((4, 1)) # Zakładamy brak dystorsji (lub małe wartości) [cite: 35, 77]
+    # 2. Orientacja zewnętrzna (Rotacja i Środek Rzutów)
+    extr = data.get('extrinsic', data)
+    R_c2w = np.array(extr['rotation_matrix'], dtype=np.float64).reshape(3, 3) # Camera to World
+    C_w = np.array(extr['translation_vector'], dtype=np.float64).reshape(3, 1) # Camera Center (Global XYZ)
 
-# =============================================================================
-# 3. WCZYTANIE I PAROWANIE PUNKTÓW WIĄŻĄCYCH (2D)
-# =============================================================================
-with open(path_gcp1, 'r') as f:
-    data_gcp1 = json.load(f)
-with open(path_gcp2, 'r') as f:
-    data_gcp2 = json.load(f)
+    # Aby zrzutować punkty na płaszczyznę, potrzebujemy macierzy z World to Camera
+    R_w2c = R_c2w.T
+    t_w2c = -R_w2c @ C_w
 
-# Szukamy punktów o takich samych nazwach w obu plikach [cite: 74]
-common_keys = [key for key in data_gcp1.keys() if key in data_gcp2]
+    # 3. Złożenie macierzy rzutowania P (Kształt: 3x4)
+    Rt = np.hstack((R_w2c, t_w2c))
+    P = K @ Rt
+    
+    return P
 
-if len(common_keys) < 5:
-    raise Exception(f"Za mało punktów wspólnych! Znaleziono tylko {len(common_keys)}, a do macierzy istotnej wymagane jest min. 5.")
-
-pts1 = np.array([data_gcp1[k] for k in common_keys], dtype=np.float32)
-pts2 = np.array([data_gcp2[k] for k in common_keys], dtype=np.float32)
-
-print(f"Pomyślnie sparowano {len(common_keys)} punktów wiążących między zdjęciami.")
+# Wyznaczenie absolutnych macierzy rzutowania w przestrzeni globalnej
+P1 = get_projection_matrix(args.ori1)
+P2 = get_projection_matrix(args.ori2)
 
 # =============================================================================
-# 4. WYZNACZANIE GEOMETRII EPIPOLARNEJ (Macierz Istotna E -> R, t)
+# 3. WCZYTANIE PUNKTÓW Z PLIKU JSON
 # =============================================================================
-# Wyznaczamy macierz istotną E przy użyciu algorytmu RANSAC [cite: 102]
-# Ponieważ zdjęcia robiono tą samą kamerą, używamy K1 jako reprezentatywnej [cite: 103]
-E, mask_E = cv2.findEssentialMat(pts1, pts2, cameraMatrix=K1, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+with open(args.uv, 'r') as f:
+    data_uv = json.load(f)
 
-# Dekompozycja macierzy E do wzajemnej rotacji R i translacji t [cite: 105, 107]
-# Założenie: Lewa kamera (zdjęcie 1) jest w początku układu (0,0,0) i nie jest obrócona[cite: 106].
-success, R, t, mask_pose = cv2.recoverPose(E, pts1, pts2, cameraMatrix=K1)
+pts1 = []
+pts2 = []
+pt_names = []
 
-if not success:
-    raise Exception("Nie udało się odzyskać orientacji wzajemnej (recoverPose).")
+# Dynamiczne pobranie kluczy (nazw zdjęć) z pierwszego punktu w pliku
+first_point_data = list(data_uv.values())[0]
+image_keys = list(first_point_data.keys())
 
-print("\nWzajemna macierz rotacji R (Kamera 2 względem Kamery 1):\n", R)
-print("\nWzajemny wektor translacji t (baza stereo - znormalizowana):\n", t)
+if len(image_keys) < 2:
+    raise ValueError("Błąd: Plik JSON musi zawierać współrzędne dla dokładnie 2 zdjęć.")
 
-# =============================================================================
-# 5. REKONSTRUKCJA 3D PUNKTÓW (Triangulacja)
-# =============================================================================
-# Budowa macierzy projekcji P dla obu kamer [cite: 114, 115, 116]
-P1 = K1 @ np.hstack((np.eye(3), np.zeros((3, 1))))
-P2 = K2 @ np.hstack((R, t))
+key_img1, key_img2 = image_keys[0], image_keys[1]
 
-# Filtrujemy punkty - wybieramy tylko te, które przeszły test geometryczny RANSAC [cite: 117]
-valid_idx = (mask_pose.ravel() == 255)
-pts1_inliers = pts1[valid_idx]
-pts2_inliers = pts2[valid_idx]
-names_inliers = [common_keys[i] for i in range(len(common_keys)) if valid_idx[i]]
+# Ekstrakcja współrzędnych
+for pt_id, coords in data_uv.items():
+    if key_img1 in coords and key_img2 in coords:
+        pts1.append(coords[key_img1])
+        pts2.append(coords[key_img2])
+        pt_names.append(pt_id)
 
-# Triangulacja punktów w przestrzeni (wynik w postaci współrzędnych jednorodnych) [cite: 118]
-pts4D_hom = cv2.triangulatePoints(P1, P2, pts1_inliers.T, pts2_inliers.T)
+pts1 = np.array(pts1, dtype=np.float64)
+pts2 = np.array(pts2, dtype=np.float64)
 
-# Konwersja ze współrzędnych jednorodnych do kartezjańskich (X, Y, Z) [cite: 119, 120]
-pts3D_local = pts4D_hom[:3, :] / pts4D_hom[3, :]
-pts3D_local = pts3D_local.T # Wynikowy kształt: (N, 3) [cite: 121]
-
-print("\nWyznaczone LOKALNE współrzędne modelowe 3D (w układzie 1. kamery):")
-for name, coords in zip(names_inliers, pts3D_local):
-    print(f" Punkt {name}: X={coords[0]:.3f}, Y={coords[1]:.3f}, Z={coords[2]:.3f}")
+print(f"Wczytano {len(pt_names)} par punktów pomierzonych na obu zdjęciach.")
 
 # =============================================================================
-# 6. WIZUALIZACJA I SKALOWANIE OKIEN
+# 4. WCIĘCIE W PRZÓD (Triangulacja)
 # =============================================================================
-img1 = cv2.imread(path_img1)
-img2 = cv2.imread(path_img2)
+# Funkcja triangulatePoints wymaga punktów w kształcie (2, N)
+pts4D_hom = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
 
-# Rysowanie punktów inlier na obu obrazach (Duże kółka, żeby były widoczne po zmniejszeniu)
-for pt1, pt2 in zip(pts1_inliers, pts2_inliers):
-    cv2.circle(img1, (int(pt1[0]), int(pt1[1])), radius=25, color=(0, 255, 0), thickness=-1)
-    cv2.circle(img2, (int(pt2[0]), int(pt2[1])), radius=25, color=(0, 255, 255), thickness=-1)
+# Konwersja ze współrzędnych jednorodnych (4D) na kartezjańskie (3D)
+pts3D_global = pts4D_hom[:3, :] / pts4D_hom[3, :]
+pts3D_global = pts3D_global.T # Zmiana kształtu z powrotem na (N, 3)
 
-# Funkcja skalująca okno do wyświetlania na ekranie komputera
-def resize_to_screen(image, target_width=900):
-    scale = target_width / image.shape[1]
-    target_height = int(image.shape[0] * scale)
-    return cv2.resize(image, (target_width, target_height))
+# =============================================================================
+# 5. ZAPIS DO PLIKU CSV
+# =============================================================================
+with open(args.out, 'w', newline='') as csvfile:
+    # W polskiej geodezji często używa się średnika jako separatora
+    csvwriter = csv.writer(csvfile, delimiter=';')
+    # Nagłówek ułatwi pracę w CloudCompare
+    csvwriter.writerow(['Nazwa', 'X', 'Y', 'Z']) 
+    
+    for name, pt in zip(pt_names, pts3D_global):
+        csvwriter.writerow([name, f"{pt[0]:.3f}", f"{pt[1]:.3f}", f"{pt[2]:.3f}"])
 
-img1_small = resize_to_screen(img1, target_width=800)
-img2_small = resize_to_screen(img2, target_width=800)
-
-# Wyświetlenie obrazów w osobnych, dopasowanych oknach
-cv2.imshow("Zdjecie 1 - Punkty wiazace (Zielone)", img1_small)
-cv2.imshow("Zdjecie 2 - Punkty wiazace (Zolte)", img2_small)
-
-print("\n[INFO] Naciśnij dowolny klawisz w oknie obrazu, aby zamknąć program.")
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+print(f"\n[SUKCES] Wyznaczono współrzędne globalne XYZ dla {len(pt_names)} punktów.")
+print(f"Wyniki zostały zapisane w pliku: {args.out}")

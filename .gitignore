@@ -8,6 +8,8 @@
 !pnp.py
 !ocena3.py
 !ocena3float64.py
+!ocena4.py
+!ocena5.py
 
 # 4. Wyjątek dla folderu data (wraz z całą zawartością)
 !data/
