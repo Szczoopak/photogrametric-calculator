@@ -46,18 +46,18 @@ pip install -r requirements.txt
 ### 1. Orientacja zewnętrzna (Ocena 3)
 
 ```bash
-python ocena3.py \
-  --image "data/data_dron/DJI_20250217091019_0200_V.jpg" \
-  --gcp_xyz "data/data_dron/gcp.txt" \
-  --gcp_uv "data/data_dron/DJI_20250217091019_0200_V_gcps.json" \
+python ocena3.py
+  --image "data/data_dron/DJI_20250217091019_0200_V.jpg"
+  --gcp_xyz "data/data_dron/gcp.txt"
+  --gcp_uv "data/data_dron/DJI_20250217091019_0200_V_gcps.json"
   --intrinsic "data/data_dron/DJI_20250217091019_0200_V_orientation.json"
 ```
 
 ### 2. Orientacja wzajemna (Ocena 5)
 
 ```bash
-python ocena5.py \
-  --intrinsic "data/data_aula/intrinsic_orientation.json" \
+python ocena5.py
+  --intrinsic "data/data_aula/intrinsic_orientation.json"
   --uv "data/data_aula/tie_points.json"
 ```
 
@@ -66,29 +66,29 @@ python ocena5.py \
 #### Dla danych z drona
 
 ```bash
-python ocena4.py \
-  --ori1 "data/data_dron/DJI_20250217091019_0200_V_orientation.json" \
-  --ori2 "data/data_dron/DJI_20250217091553_0592_V_orientation.json" \
-  --uv "data/data_dron/moje_punkty_dron.json" \
+python ocena4.py
+  --ori1 "data/data_dron/DJI_20250217091019_0200_V_orientation.json"
+  --ori2 "data/data_dron/DJI_20250217091553_0592_V_orientation.json"
+  --uv "data/data_dron/moje_punkty_dron.json"
   --out "results/moje_punkty_ocena4.csv"
 ```
 
 #### Dla danych z auli
 
 ```bash
-python ocena4.py \
-  --ori1 "results/DSC08444.json" \
-  --ori2 "results/DSC08447.json" \
-  --uv "data/data_aula/moje_punkty_aula.json" \
+python ocena4.py
+  --ori1 "results/DSC08444.json"
+  --ori2 "results/DSC08447.json"
+  --uv "data/data_aula/moje_punkty_aula.json"
   --out "results/moje_punkty_ocena5.csv"
 ```
 
 ### 4. Weryfikacja wizualna
 
 ```bash
-python sprawdz_punkty.py \
-  --img1 "data/data_aula/DSC08444.jpg" \
-  --img2 "data/data_aula/DSC08447.jpg" \
+python sprawdz_punkty.py
+  --img1 "data/data_aula/DSC08444.jpg"
+  --img2 "data/data_aula/DSC08447.jpg"
   --uv "data/data_aula/moje_punkty_aula.json"
 ```
 
