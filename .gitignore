@@ -7,9 +7,13 @@
 # 3. Wyjątki dla plików .py, które chcesz zostawić
 !pnp.py
 !ocena3.py
-!ocena3float64.py
 !ocena4.py
 !ocena5.py
+!sprawdz_punkty.py
+# 4. Wyjątki dla README.md i innych ważnych dokumentów
+!README.md
+!requirements.txt
 
-# 4. Wyjątek dla folderu data (wraz z całą zawartością)
+# 5. Wyjątek dla folderu data (wraz z całą zawartością)
 !data/
+!results/

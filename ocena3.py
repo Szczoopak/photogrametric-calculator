@@ -6,7 +6,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 # Obsługa wejścia z linii komend
-parser = argparse.ArgumentParser(description="Orientacja zewnetrzna pojedynczego zdjecia - Projekt 1")
+parser = argparse.ArgumentParser(description="Orientacja zewnetrzna pojedynczego zdjecia")
 parser.add_argument('--image', required=True, help="Sciezka do pliku ze zdjeciem (.jpg)")
 parser.add_argument('--gcp_xyz', required=True, help="Sciezka do pliku CSV/TXT ze wspolrzednymi XYZ")
 parser.add_argument('--gcp_uv', required=True, help="Sciezka do pliku JSON ze wspolrzednymi UV (pikselowymi)")

@@ -5,9 +5,9 @@ import cv2
 import csv
 
 # Obsługa wejścia z linii komend
-parser = argparse.ArgumentParser(description="Wcięcie w przód - Projekt 1 (Ocena 4)")
-parser.add_argument('--ori1', required=True, help="Sciezka do pliku JSON z orientacja 1. zdjecia")
-parser.add_argument('--ori2', required=True, help="Sciezka do pliku JSON z orientacja 2. zdjecia")
+parser = argparse.ArgumentParser(description="Wciecie w przod")
+parser.add_argument('--ori1', required=True, help="Sciezka do pliku JSON z orientacja 1 zdjecia")
+parser.add_argument('--ori2', required=True, help="Sciezka do pliku JSON z orientacja 2 zdjecia")
 parser.add_argument('--uv', required=True, help="Sciezka do pliku JSON ze wspolrzednymi pikselowymi")
 parser.add_argument('--out', required=True, help="Sciezka do wynikowego pliku CSV")
 args = parser.parse_args()
@@ -18,16 +18,28 @@ with open(args.ori1, 'r') as f:
 with open(args.ori2, 'r') as f:
     data_ori2 = json.load(f)
 
-# Zakładam, że macierz K jest identyczna dla obu zdjęć (korzystam z ori1)
-intr = data_ori1.get('intrinsic', data_ori1)
-f_pixels = intr['focal_in_pixels']
-cx = (intr['width'] / 2.0) + intr['principal_point_offset'][0]
-cy = (intr['height'] / 2.0) + intr['principal_point_offset'][1]
+# Zdjęcie 1
+intr1 = data_ori1.get('intrinsic', data_ori1)
+f_pixels1 = intr1['focal_in_pixels']
+cx1 = (intr1['width'] / 2.0) + intr1['principal_point_offset'][0]
+cy1 = (intr1['height'] / 2.0) + intr1['principal_point_offset'][1]
 
-K = np.array([
-    [f_pixels,       0.0,  cx],
-    [0.0,       f_pixels,  cy],
-    [0.0,            0.0, 1.0]
+K1 = np.array([
+    [f_pixels1,       0.0,  cx1],
+    [0.0,       f_pixels1,  cy1],
+    [0.0,             0.0,  1.0]
+], dtype=np.float32)
+
+# Zdjęcie 2
+intr2 = data_ori2.get('intrinsic', data_ori2)
+f_pixels2 = intr2['focal_in_pixels']
+cx2 = (intr2['width'] / 2.0) + intr2['principal_point_offset'][0]
+cy2 = (intr2['height'] / 2.0) + intr2['principal_point_offset'][1]
+
+K2 = np.array([
+    [f_pixels2,       0.0,  cx2],
+    [0.0,       f_pixels2,  cy2],
+    [0.0,             0.0,  1.0]
 ], dtype=np.float32)
 
 # Przygotowanie danych z układem centrycznym
@@ -61,8 +73,8 @@ Rt1_32 = np.hstack((R1_w2c, t1_local_64)).astype(np.float32)
 Rt2_32 = np.hstack((R2_w2c, t2_local_64)).astype(np.float32)
 
 # Ostateczne macierze rzutowania przekazywane do OpenCV
-P1 = K @ Rt1_32
-P2 = K @ Rt2_32
+P1 = K1 @ Rt1_32
+P2 = K2 @ Rt2_32
 
 # Wczytywanie punktów 2D
 with open(args.uv, 'r') as f:

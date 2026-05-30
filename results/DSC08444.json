@@ -1,0 +1,35 @@
+{
+    "intrinsic": {
+        "focal_in_pixels": 7988.769024567465,
+        "principal_point_offset": [
+            22.057421204542873,
+            -6.320727027875259
+        ],
+        "width": 5304,
+        "height": 7952
+    },
+    "extrinsic": {
+        "rotation_matrix": [
+            [
+                1.0,
+                0.0,
+                0.0
+            ],
+            [
+                0.0,
+                1.0,
+                0.0
+            ],
+            [
+                0.0,
+                0.0,
+                1.0
+            ]
+        ],
+        "translation_vector": [
+            0.0,
+            0.0,
+            0.0
+        ]
+    }
+}
