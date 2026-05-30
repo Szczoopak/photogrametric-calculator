@@ -4,58 +4,67 @@ import numpy as np
 import cv2
 import csv
 
-# =============================================================================
-# 1. PARSER LINII KOMEND (Wymaganie instrukcji)
-# =============================================================================
+# Obsługa wejścia z linii komend
 parser = argparse.ArgumentParser(description="Wcięcie w przód - Projekt 1 (Ocena 4)")
-parser.add_argument('--ori1', required=True, help="Ścieżka do pliku JSON z orientacją 1. zdjęcia")
-parser.add_argument('--ori2', required=True, help="Ścieżka do pliku JSON z orientacją 2. zdjęcia")
-parser.add_argument('--uv', required=True, help="Ścieżka do pliku JSON ze współrzędnymi pikselowymi (np. tie_points.json)")
-parser.add_argument('--out', required=True, help="Ścieżka do wynikowego pliku CSV")
+parser.add_argument('--ori1', required=True, help="Sciezka do pliku JSON z orientacja 1. zdjecia")
+parser.add_argument('--ori2', required=True, help="Sciezka do pliku JSON z orientacja 2. zdjecia")
+parser.add_argument('--uv', required=True, help="Sciezka do pliku JSON ze wspolrzednymi pikselowymi")
+parser.add_argument('--out', required=True, help="Sciezka do wynikowego pliku CSV")
 args = parser.parse_args()
 
-# =============================================================================
-# 2. FUNKCJA BUDUJĄCA MACIERZ RZUTOWANIA P (P = K * [R | t])
-# =============================================================================
-def get_projection_matrix(path_json):
-    """Zwraca macierz rzutowania P w globalnym układzie współrzędnych (float64)."""
-    with open(path_json, 'r') as f:
-        data = json.load(f)
-    
-    # 1. Macierz kalibracyjna K (Wewnętrzna)
-    intr = data.get('intrinsic', data)
-    f_pixels = intr['focal_in_pixels']
-    cx = (intr['width'] / 2.0) + intr['principal_point_offset'][0]
-    cy = (intr['height'] / 2.0) + intr['principal_point_offset'][1]
-    
-    K = np.array([
-        [f_pixels, 0.0, cx],
-        [0.0, f_pixels, cy],
-        [0.0, 0.0, 1.0]
-    ], dtype=np.float64)
+# Odczyt parametrów wewnętrznych
+with open(args.ori1, 'r') as f:
+    data_ori1 = json.load(f)
+with open(args.ori2, 'r') as f:
+    data_ori2 = json.load(f)
 
-    # 2. Orientacja zewnętrzna (Rotacja i Środek Rzutów)
-    extr = data.get('extrinsic', data)
-    R_c2w = np.array(extr['rotation_matrix'], dtype=np.float64).reshape(3, 3) # Camera to World
-    C_w = np.array(extr['translation_vector'], dtype=np.float64).reshape(3, 1) # Camera Center (Global XYZ)
+# Zakładam, że macierz K jest identyczna dla obu zdjęć (korzystam z ori1)
+intr = data_ori1.get('intrinsic', data_ori1)
+f_pixels = intr['focal_in_pixels']
+cx = (intr['width'] / 2.0) + intr['principal_point_offset'][0]
+cy = (intr['height'] / 2.0) + intr['principal_point_offset'][1]
 
-    # Aby zrzutować punkty na płaszczyznę, potrzebujemy macierzy z World to Camera
-    R_w2c = R_c2w.T
-    t_w2c = -R_w2c @ C_w
+K = np.array([
+    [f_pixels,       0.0,  cx],
+    [0.0,       f_pixels,  cy],
+    [0.0,            0.0, 1.0]
+], dtype=np.float32)
 
-    # 3. Złożenie macierzy rzutowania P (Kształt: 3x4)
-    Rt = np.hstack((R_w2c, t_w2c))
-    P = K @ Rt
-    
-    return P
+# Przygotowanie danych z układem centrycznym
+extr1 = data_ori1.get('extrinsic', data_ori1)
+extr2 = data_ori2.get('extrinsic', data_ori2)
 
-# Wyznaczenie absolutnych macierzy rzutowania w przestrzeni globalnej
-P1 = get_projection_matrix(args.ori1)
-P2 = get_projection_matrix(args.ori2)
+# Wczytanie globalnej pozycji kamer z pełną precyzją float64
+R1_c2w = np.array(extr1['rotation_matrix'], dtype=np.float64).reshape(3, 3)
+C1_w = np.array(extr1['translation_vector'], dtype=np.float64).reshape(3, 1)
 
-# =============================================================================
-# 3. WCZYTANIE PUNKTÓW Z PLIKU JSON
-# =============================================================================
+R2_c2w = np.array(extr2['rotation_matrix'], dtype=np.float64).reshape(3, 3)
+C2_w = np.array(extr2['translation_vector'], dtype=np.float64).reshape(3, 1)
+
+# Wyznaczenie środka ciężkości układu
+# Jako układ odniesienia wybieram punkt idealnie w połowie między kamerami
+centroid_64 = (C1_w + C2_w) / 2.0
+
+# Redukcja środków rzutów do środka ciężkości
+C1_local_64 = C1_w - centroid_64
+C2_local_64 = C2_w - centroid_64
+
+# Obliczenie wektorów translacji w układzie lokalnym
+R1_w2c = R1_c2w.T
+t1_local_64 = -R1_w2c @ C1_local_64
+
+R2_w2c = R2_c2w.T
+t2_local_64 = -R2_w2c @ C2_local_64
+
+# Rzutowanie małych wartości translacji na float32
+Rt1_32 = np.hstack((R1_w2c, t1_local_64)).astype(np.float32)
+Rt2_32 = np.hstack((R2_w2c, t2_local_64)).astype(np.float32)
+
+# Ostateczne macierze rzutowania przekazywane do OpenCV
+P1 = K @ Rt1_32
+P2 = K @ Rt2_32
+
+# Wczytywanie punktów 2D
 with open(args.uv, 'r') as f:
     data_uv = json.load(f)
 
@@ -63,7 +72,7 @@ pts1 = []
 pts2 = []
 pt_names = []
 
-# Dynamiczne pobranie kluczy (nazw zdjęć) z pierwszego punktu w pliku
+# Pobranie nazw zdjęć z pierwszego punktu w pliku
 first_point_data = list(data_uv.values())[0]
 image_keys = list(first_point_data.keys())
 
@@ -72,35 +81,30 @@ if len(image_keys) < 2:
 
 key_img1, key_img2 = image_keys[0], image_keys[1]
 
-# Ekstrakcja współrzędnych
 for pt_id, coords in data_uv.items():
     if key_img1 in coords and key_img2 in coords:
         pts1.append(coords[key_img1])
         pts2.append(coords[key_img2])
         pt_names.append(pt_id)
 
-pts1 = np.array(pts1, dtype=np.float64)
-pts2 = np.array(pts2, dtype=np.float64)
+pts1 = np.array(pts1, dtype=np.float32)
+pts2 = np.array(pts2, dtype=np.float32)
 
 print(f"Wczytano {len(pt_names)} par punktów pomierzonych na obu zdjęciach.")
 
-# =============================================================================
-# 4. WCIĘCIE W PRZÓD (Triangulacja)
-# =============================================================================
-# Funkcja triangulatePoints wymaga punktów w kształcie (2, N)
+# Wcięcie w przód
 pts4D_hom = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
 
-# Konwersja ze współrzędnych jednorodnych (4D) na kartezjańskie (3D)
-pts3D_global = pts4D_hom[:3, :] / pts4D_hom[3, :]
-pts3D_global = pts3D_global.T # Zmiana kształtu z powrotem na (N, 3)
+# Konwersja na współrzędne kartezjańskie (3D) w układzie lokalnym
+pts3D_local = pts4D_hom[:3, :] / pts4D_hom[3, :]
+pts3D_local = pts3D_local.T 
 
-# =============================================================================
-# 5. ZAPIS DO PLIKU CSV
-# =============================================================================
+# Powrót do pełnej precyzji globalnej (float64) i dodanie centroidu
+pts3D_global = pts3D_local.astype(np.float64) + centroid_64.T
+
+# Zapis do pliku CSV
 with open(args.out, 'w', newline='') as csvfile:
-    # W polskiej geodezji często używa się średnika jako separatora
     csvwriter = csv.writer(csvfile, delimiter=';')
-    # Nagłówek ułatwi pracę w CloudCompare
     csvwriter.writerow(['Nazwa', 'X', 'Y', 'Z']) 
     
     for name, pt in zip(pt_names, pts3D_global):
