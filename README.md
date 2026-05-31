@@ -66,10 +66,10 @@ Każdy ze skryptów obsługuje zestaw parametrów przekazywanych z poziomu konso
 | `--out`       | Ścieżka | Lokalizacja docelowa oraz nazwa wyjściowego pliku .csv z wynikami obliczeń 3D.         |
 | `--img1` /<br>`--img2` | Ścieżka | Ścieżki do pierwszego i drugiego zdjęcia używane przy wizualnej weryfikacji punktów.   |
 
-💡 **Wskazówka:** Każdy ze skryptów posiada wbudowany system pomocy. Jeśli chcesz szybko sprawdzić wymagane parametry lub upewnić się, jakie flagi są dostępne, możesz uruchomić dowolny plik z flagą `-h` lub `--help`:
-```bash
-python ocena3.py --help
-```
+> 💡 **Wskazówka:** Każdy ze skryptów posiada wbudowany system pomocy. Jeśli chcesz szybko sprawdzić wymagane parametry lub upewnić się, jakie flagi są dostępne, możesz uruchomić dowolny plik z flagą `-h` lub `--help`:
+> ```bash
+> python ocena3.py --help
+> ```
 
 ## 💻 Polecenia uruchomienia (dane testowe)
 
