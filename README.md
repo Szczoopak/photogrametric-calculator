@@ -62,9 +62,14 @@ Każdy ze skryptów obsługuje zestaw parametrów przekazywanych z poziomu konso
 | `--gcp_uv`    | Ścieżka | Plik .json zawierający współrzędne pikselowe $(u, v)$ punktów osnowy na danym zdjęciu. |
 | `--intrinsic` | Ścieżka | Plik .json z parametrami orientacji wewnętrznej / kalibracji kamery.                   |
 | `--uv`        | Ścieżka | Plik .json ze współrzędnymi pikselowymi mierzonych punktów lub punktów wiążących.      |
-| `--ori1` / `--ori2` | Ścieżka | Pliki .json z danymi orientacji (zewnętrznej i wewnętrznej) odpowiednio dla pierwszego i drugiego zdjęcia. |
+| `--ori1` /<br>`--ori2` | Ścieżka | Pliki .json z danymi orientacji (zewnętrznej i wewnętrznej) odpowiednio dla pierwszego i drugiego zdjęcia. |
 | `--out`       | Ścieżka | Lokalizacja docelowa oraz nazwa wyjściowego pliku .csv z wynikami obliczeń 3D.         |
-| `--img1` / `--img2` | Ścieżka | Ścieżki do pierwszego i drugiego zdjęcia używane przy wizualnej weryfikacji punktów.   |
+| `--img1` /<br>`--img2` | Ścieżka | Ścieżki do pierwszego i drugiego zdjęcia używane przy wizualnej weryfikacji punktów.   |
+
+💡 **Wskazówka:** Każdy ze skryptów posiada wbudowany system pomocy. Jeśli chcesz szybko sprawdzić wymagane parametry lub upewnić się, jakie flagi są dostępne, możesz uruchomić dowolny plik z flagą `-h` lub `--help`:
+```bash
+python ocena3.py --help
+```
 
 ## 💻 Polecenia uruchomienia (dane testowe)
 
